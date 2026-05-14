@@ -12,20 +12,25 @@ def mil_ranking_loss(a_scores, n_scores, lambda1=8e-5, lambda2=8e-5):
     return hinge + lambda1 * smooth + lambda2 * sparsity
 
 def train():
+    input_dim = 1024
+    n_segments = 32
+    epochs = 50
+
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     print(f"Training on: {device}")
 
     dataset = UCFCrimeDataset(
         anomaly_dir='data/features/train/anomaly',
         normal_dir='data/features/train/normal',
-        n_segments=32
+        n_segments=n_segments
     )
     loader = DataLoader(dataset, batch_size=30, shuffle=True, num_workers=0)
 
-    model = AnomalyNet(input_dim=1024).to(device)
+    model = AnomalyNet(input_dim=input_dim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
-    for epoch in range(1, 51):
+    final_loss = None
+    for epoch in range(1, epochs + 1):
         model.train()
         total_loss = 0.0
         for anomaly_feats, normal_feats in loader:
@@ -39,9 +44,17 @@ def train():
             optimizer.step()
             total_loss += loss.item()
 
-        print(f"Epoch {epoch:02d}/50  |  Loss: {total_loss/len(loader):.4f}")
+        final_loss = total_loss / len(loader)
+        print(f"Epoch {epoch:02d}/{epochs}  |  Loss: {final_loss:.4f}")
 
-    torch.save(model.state_dict(), 'anomaly_net_weights.pth')
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'input_dim': input_dim,
+        'n_segments': n_segments,
+        'epochs': epochs,
+        'final_loss': final_loss,
+    }, 'anomaly_net_weights.pth')
     print("Model saved.")
 
 if __name__ == '__main__':
