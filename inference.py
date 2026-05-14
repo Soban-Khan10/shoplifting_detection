@@ -81,7 +81,12 @@ def save_score_plot(scores, output_path):
 def parse_args():
     parser = argparse.ArgumentParser(description="Run anomaly inference on a UCF Crime feature file.")
     parser.add_argument("--feature", required=True, help="Path to a .npy feature file.")
-    parser.add_argument("--threshold", type=float, default=0.5, help="Alert threshold for max anomaly score.")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.052090,
+        help="Alert threshold for max anomaly score from video-level ROC evaluation.",
+    )
     return parser.parse_args()
 
 
