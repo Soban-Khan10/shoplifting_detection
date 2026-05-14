@@ -147,14 +147,13 @@ def make_anomaly_labels(intervals, temporal_length):
     return labels
 
 
-def plot_roc(fpr, tpr, auc):
-    output_path = OUTPUT_DIR / "roc_curve.png"
+def plot_roc(fpr, tpr, auc, output_path, title):
     plt.figure(figsize=(6, 6))
     plt.plot(fpr, tpr, linewidth=2, label=f"AUC = {auc:.4f}")
     plt.plot([0, 1], [0, 1], linestyle="--", color="gray", linewidth=1)
     plt.xlabel("False positive rate")
     plt.ylabel("True positive rate")
-    plt.title("ROC curve")
+    plt.title(title)
     plt.grid(True, alpha=0.3)
     plt.legend(loc="lower right")
     plt.tight_layout()
@@ -237,9 +236,28 @@ def main():
     fpr, tpr, thresholds = roc_curve(y_true, y_score)
     best_idx = int(np.argmax(tpr - fpr))
     best_threshold = float(thresholds[best_idx])
+    video_y_true = np.array(
+        [1] * len(anomaly_scores) + [0] * len(normal_scores),
+        dtype=np.int64,
+    )
+    video_y_score = np.array(
+        [np.max(scores) for scores in anomaly_scores.values()]
+        + [np.max(scores) for scores in normal_scores.values()]
+    )
+    video_auc = roc_auc_score(video_y_true, video_y_score)
+    video_fpr, video_tpr, video_thresholds = roc_curve(video_y_true, video_y_score)
+    video_best_idx = int(np.argmax(video_tpr - video_fpr))
+    video_best_threshold = float(video_thresholds[video_best_idx])
     anomaly_diagnostics = score_diagnostics(anomaly_scores)
     normal_diagnostics = score_diagnostics(normal_scores)
-    plot_roc(fpr, tpr, auc)
+    plot_roc(fpr, tpr, auc, OUTPUT_DIR / "roc_curve.png", "Temporal-level ROC curve")
+    plot_roc(
+        video_fpr,
+        video_tpr,
+        video_auc,
+        OUTPUT_DIR / "video_level_roc_curve.png",
+        "Video-level ROC curve",
+    )
     plot_score_histogram(anomaly_frame_scores, normal_frame_scores)
 
     print("Anomaly grouped video score diagnostics:")
@@ -263,6 +281,8 @@ def main():
     print(f"Total evaluation points: {len(y_true)}")
     print(f"Frame/temporal-level AUC: {auc:.6f}")
     print(f"Best threshold: {best_threshold:.6f}")
+    print(f"Video-level AUC: {video_auc:.6f}")
+    print(f"Video-level best threshold: {video_best_threshold:.6f}")
 
 
 if __name__ == "__main__":
