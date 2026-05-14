@@ -22,7 +22,7 @@ def train():
     )
     loader = DataLoader(dataset, batch_size=30, shuffle=True, num_workers=0)
 
-    model = AnomalyNet(input_dim=2048).to(device)
+    model = AnomalyNet(input_dim=1024).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
     for epoch in range(1, 51):
