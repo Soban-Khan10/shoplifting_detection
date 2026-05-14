@@ -162,6 +162,32 @@ def plot_roc(fpr, tpr, auc):
     plt.close()
 
 
+def score_diagnostics(grouped_scores):
+    video_max_scores = np.array([np.max(scores) for scores in grouped_scores.values()])
+    video_mean_scores = np.array([np.mean(scores) for scores in grouped_scores.values()])
+    return {
+        "mean_video_max": float(np.mean(video_max_scores)),
+        "min_video_max": float(np.min(video_max_scores)),
+        "max_video_max": float(np.max(video_max_scores)),
+        "mean_video_mean": float(np.mean(video_mean_scores)),
+    }
+
+
+def plot_score_histogram(anomaly_frame_scores, normal_frame_scores):
+    output_path = OUTPUT_DIR / "score_histogram.png"
+    plt.figure(figsize=(8, 5))
+    plt.hist(normal_frame_scores, bins=50, alpha=0.65, label="Normal", density=True)
+    plt.hist(anomaly_frame_scores, bins=50, alpha=0.65, label="Anomaly", density=True)
+    plt.xlabel("Anomaly score")
+    plt.ylabel("Density")
+    plt.title("Temporal score distribution")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+
+
 def main():
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     state_dict, input_dim, n_segments = load_checkpoint(CHECKPOINT_PATH, device)
@@ -182,29 +208,50 @@ def main():
 
     y_true_parts = []
     y_score_parts = []
+    anomaly_frame_score_parts = []
+    normal_frame_score_parts = []
 
     for name in matched_anomaly_names:
         temporal_length = anomaly_lengths[name]
+        expanded_scores = expand_scores(anomaly_scores[name], temporal_length)
         y_true_parts.append(make_anomaly_labels(annotations[name], temporal_length))
-        y_score_parts.append(expand_scores(anomaly_scores[name], temporal_length))
+        y_score_parts.append(expanded_scores)
+        anomaly_frame_score_parts.append(expanded_scores)
 
     for name, scores in normal_scores.items():
         temporal_length = normal_lengths[name]
+        expanded_scores = expand_scores(scores, temporal_length)
         y_true_parts.append(np.zeros(temporal_length, dtype=np.int64))
-        y_score_parts.append(expand_scores(scores, temporal_length))
+        y_score_parts.append(expanded_scores)
+        normal_frame_score_parts.append(expanded_scores)
 
     if not y_true_parts:
         raise ValueError("No evaluation data found.")
 
     y_true = np.concatenate(y_true_parts)
     y_score = np.concatenate(y_score_parts)
+    anomaly_frame_scores = np.concatenate(anomaly_frame_score_parts)
+    normal_frame_scores = np.concatenate(normal_frame_score_parts)
 
     auc = roc_auc_score(y_true, y_score)
     fpr, tpr, thresholds = roc_curve(y_true, y_score)
     best_idx = int(np.argmax(tpr - fpr))
     best_threshold = float(thresholds[best_idx])
+    anomaly_diagnostics = score_diagnostics(anomaly_scores)
+    normal_diagnostics = score_diagnostics(normal_scores)
     plot_roc(fpr, tpr, auc)
+    plot_score_histogram(anomaly_frame_scores, normal_frame_scores)
 
+    print("Anomaly grouped video score diagnostics:")
+    print(f"  Mean video max score: {anomaly_diagnostics['mean_video_max']:.6f}")
+    print(f"  Min video max score: {anomaly_diagnostics['min_video_max']:.6f}")
+    print(f"  Max video max score: {anomaly_diagnostics['max_video_max']:.6f}")
+    print(f"  Mean video mean score: {anomaly_diagnostics['mean_video_mean']:.6f}")
+    print("Normal grouped video score diagnostics:")
+    print(f"  Mean video max score: {normal_diagnostics['mean_video_max']:.6f}")
+    print(f"  Min video max score: {normal_diagnostics['min_video_max']:.6f}")
+    print(f"  Max video max score: {normal_diagnostics['max_video_max']:.6f}")
+    print(f"  Mean video mean score: {normal_diagnostics['mean_video_mean']:.6f}")
     print(f"Device: {device}")
     print(f"Anomaly feature file count: {len(anomaly_files)}")
     print(f"Normal feature file count: {len(normal_files)}")
