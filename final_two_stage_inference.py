@@ -71,6 +71,11 @@ def parse_args():
         default=5,
         help="Number of top Stage 2 suspicious segments to report when alert is True.",
     )
+    parser.add_argument(
+        "--stage2-checkpoint",
+        default=str(STAGE2_CHECKPOINT_PATH),
+        help="Path to the Stage 2 Direct BiLSTM checkpoint.",
+    )
     return parser.parse_args()
 
 
@@ -236,6 +241,7 @@ def main():
     args = parse_args()
     input_path = Path(args.input)
     output_dir = Path(args.output_dir)
+    stage2_checkpoint_path = Path(args.stage2_checkpoint)
     device = select_device(args.device)
 
     feature_files = discover_feature_files(input_path)
@@ -245,7 +251,7 @@ def main():
     stage1.eval()
 
     stage2 = DirectBiLSTM().to(device)
-    stage2.load_state_dict(load_state_dict(STAGE2_CHECKPOINT_PATH, device))
+    stage2.load_state_dict(load_state_dict(stage2_checkpoint_path, device))
     stage2.eval()
 
     stage1_scores, original_lengths = run_model_on_files(stage1, feature_files, device)
@@ -277,6 +283,7 @@ def main():
         "feature_files": [str(path) for path in feature_files],
         "num_feature_files_used": len(feature_files),
         "device": str(device),
+        "stage2_checkpoint": str(stage2_checkpoint_path),
         "stage1_max_score": stage1_max_score,
         "threshold": float(args.threshold),
         "alert": alert,

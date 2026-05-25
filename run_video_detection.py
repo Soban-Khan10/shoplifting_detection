@@ -39,6 +39,11 @@ def parse_args():
     )
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, help="Stage 1 inference threshold.")
     parser.add_argument("--top-k", type=int, default=5, help="Number of top Stage 2 suspicious segments to report.")
+    parser.add_argument(
+        "--stage2-checkpoint",
+        default="temporal_model_direct_bilstm.pth",
+        help="Path to the Stage 2 Direct BiLSTM checkpoint.",
+    )
     parser.add_argument("--clip-len", type=int, default=64, help="I3D clip length in frames.")
     parser.add_argument("--stride", type=int, default=32, help="I3D clip stride in frames.")
     parser.add_argument("--resize", type=int, default=256, help="I3D resize size before center crop.")
@@ -346,6 +351,8 @@ def main():
         f"{args.threshold:.6f}",
         "--top-k",
         str(args.top_k),
+        "--stage2-checkpoint",
+        args.stage2_checkpoint,
     ]
     status = run_stage(inference_command)
     if status != 0:
