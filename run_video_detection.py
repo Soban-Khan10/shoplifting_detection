@@ -44,6 +44,16 @@ def parse_args():
         default="temporal_model_direct_bilstm.pth",
         help="Path to the Stage 2 Direct BiLSTM checkpoint.",
     )
+    parser.add_argument(
+        "--simulate-person-match",
+        action="store_true",
+        help="Run the simulated person matching demo on the suspicious key frame when alert is True.",
+    )
+    parser.add_argument(
+        "--person-match-output-dir",
+        default="outputs/person_match_demo",
+        help="Directory for simulated person matching outputs.",
+    )
     parser.add_argument("--clip-len", type=int, default=64, help="I3D clip length in frames.")
     parser.add_argument("--stride", type=int, default=32, help="I3D clip stride in frames.")
     parser.add_argument("--resize", type=int, default=256, help="I3D resize size before center crop.")
@@ -204,6 +214,9 @@ def add_null_suspicious_outputs(result):
     result.setdefault("suspicious_key_frame_path", None)
     result.setdefault("timestamp_mapping_note", None)
     result.setdefault("top_suspicious_time_windows", [])
+    result.setdefault("person_match_result_json_path", None)
+    result.setdefault("person_match_output_dir", None)
+    result.setdefault("person_match_warning", None)
 
 
 def map_top_segments_to_time_windows(top_segments, metadata):
@@ -289,6 +302,21 @@ def extract_suspicious_outputs(video_path, output_dir, feature_path):
     print(f"Saved suspicious key frame path: {key_frame_path}")
 
 
+def run_simulated_person_match(key_frame_path, output_dir):
+    command = [
+        "python",
+        "simulate_person_match.py",
+        "--image",
+        str(key_frame_path),
+        "--output-dir",
+        str(output_dir),
+    ]
+    result = subprocess.run(command)
+    if result.returncode != 0:
+        raise RuntimeError(f"Simulated person matching failed with exit code {result.returncode}.")
+    return Path(output_dir) / "simulated_match_result.json"
+
+
 def main():
     args = parse_args()
     video_path = Path(args.video).expanduser()
@@ -367,6 +395,21 @@ def main():
             output_dir=output_dir,
             feature_path=feature_path,
         )
+        if args.simulate_person_match:
+            key_frame_path = output_dir / f"{safe_stem(video_path)}_suspicious_key_frame.jpg"
+            if Path(key_frame_path).exists():
+                print()
+                print("Stage 4: Simulating person match")
+                match_json_path = run_simulated_person_match(key_frame_path, args.person_match_output_dir)
+                result_path = inference_json_path_for(feature_path, output_dir)
+                result = read_json(result_path)
+                result["person_match_result_json_path"] = str(match_json_path)
+                result["person_match_output_dir"] = str(Path(args.person_match_output_dir))
+                result["person_match_warning"] = "Simulated demo only, not real face recognition."
+                write_json(result_path, result)
+                print(f"Saved simulated match result path: {match_json_path}")
+            else:
+                print("Warning: suspicious key frame missing; simulated person match skipped.", file=sys.stderr)
     except (FileNotFoundError, ValueError, RuntimeError, OSError) as exc:
         print(f"Error: suspicious clip extraction failed: {exc}", file=sys.stderr)
         return 1

@@ -1,0 +1,102 @@
+[
+  {
+    "person_id": "P001",
+    "name": "Alex Mercer",
+    "age": 34,
+    "gender": "male",
+    "last_seen_store": "North Plaza Market",
+    "previous_incidents": 2,
+    "risk_level": "medium",
+    "notes": "Demo profile for dashboard testing only."
+  },
+  {
+    "person_id": "P002",
+    "name": "Maya Stone",
+    "age": 29,
+    "gender": "female",
+    "last_seen_store": "Riverside Outlet",
+    "previous_incidents": 0,
+    "risk_level": "low",
+    "notes": "Simulated profile with no prior incidents."
+  },
+  {
+    "person_id": "P003",
+    "name": "Jordan Hale",
+    "age": 41,
+    "gender": "non-binary",
+    "last_seen_store": "City Center Grocery",
+    "previous_incidents": 1,
+    "risk_level": "medium",
+    "notes": "Synthetic identity used for mock matching."
+  },
+  {
+    "person_id": "P004",
+    "name": "Riley Quinn",
+    "age": 23,
+    "gender": "female",
+    "last_seen_store": "Harbor Mall",
+    "previous_incidents": 3,
+    "risk_level": "high",
+    "notes": "High-risk demo profile for UI validation."
+  },
+  {
+    "person_id": "P005",
+    "name": "Noah Bennett",
+    "age": 38,
+    "gender": "male",
+    "last_seen_store": "Greenfield Supermarket",
+    "previous_incidents": 0,
+    "risk_level": "low",
+    "notes": "Placeholder only, not a real person."
+  },
+  {
+    "person_id": "P006",
+    "name": "Casey Brooks",
+    "age": 46,
+    "gender": "female",
+    "last_seen_store": "Downtown Corner Store",
+    "previous_incidents": 4,
+    "risk_level": "high",
+    "notes": "Used for simulated incident workflows."
+  },
+  {
+    "person_id": "P007",
+    "name": "Taylor Reed",
+    "age": 31,
+    "gender": "male",
+    "last_seen_store": "Airport Convenience",
+    "previous_incidents": 1,
+    "risk_level": "medium",
+    "notes": "Fictional record for testing only."
+  },
+  {
+    "person_id": "P008",
+    "name": "Avery Cole",
+    "age": 27,
+    "gender": "female",
+    "last_seen_store": "Market Square Mini Mart",
+    "previous_incidents": 0,
+    "risk_level": "low",
+    "notes": "No real-world identity represented."
+  },
+  {
+    "person_id": "P009",
+    "name": "Drew Carter",
+    "age": 52,
+    "gender": "male",
+    "last_seen_store": "Sunset Retail Hub",
+    "previous_incidents": 2,
+    "risk_level": "medium",
+    "notes": "Synthetic demo-only profile."
+  },
+  {
+    "person_id": "P010",
+    "name": "Sydney Park",
+    "age": 36,
+    "gender": "female",
+    "last_seen_store": "Oak Street Pharmacy",
+    "previous_incidents": 5,
+    "risk_level": "high",
+    "notes": "Fictional profile for UI and reporting tests."
+  }
+]
