@@ -65,6 +65,12 @@ def parse_args():
         choices=["auto", "cpu", "mps"],
         help="Inference device. Default uses MPS when available, otherwise CPU.",
     )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=5,
+        help="Number of top Stage 2 suspicious segments to report when alert is True.",
+    )
     return parser.parse_args()
 
 
@@ -171,6 +177,27 @@ def approximate_window(segment_idx, temporal_length):
     return start, end
 
 
+def top_k_segments(stage2_scores, temporal_length, top_k):
+    if top_k <= 0:
+        raise ValueError(f"--top-k must be greater than zero, got {top_k}")
+    limit = min(int(top_k), len(stage2_scores))
+    ranked_indices = np.argsort(stage2_scores)[::-1][:limit]
+    segments = []
+    for rank, segment_idx in enumerate(ranked_indices, start=1):
+        segment_idx = int(segment_idx)
+        start, end = approximate_window(segment_idx, temporal_length)
+        segments.append(
+            {
+                "rank": int(rank),
+                "segment_index": segment_idx,
+                "score": float(stage2_scores[segment_idx]),
+                "approx_feature_start": int(start),
+                "approx_feature_end": int(end),
+            }
+        )
+    return segments
+
+
 def safe_output_stem(input_path):
     name = input_path.stem if input_path.is_file() else input_path.name
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("._")
@@ -230,6 +257,7 @@ def main():
     suspicious_segment_score = None
     window_start = None
     window_end = None
+    top_suspicious_segments = []
     temporal_length = int(max(original_lengths))
 
     if alert:
@@ -237,6 +265,7 @@ def main():
         suspicious_segment_index = int(np.argmax(stage2_scores))
         suspicious_segment_score = float(stage2_scores[suspicious_segment_index])
         window_start, window_end = approximate_window(suspicious_segment_index, temporal_length)
+        top_suspicious_segments = top_k_segments(stage2_scores, temporal_length, args.top_k)
 
     output_stem = safe_output_stem(input_path)
     plot_path = output_dir / f"{output_stem}_scores.png"
@@ -258,6 +287,8 @@ def main():
         "suspicious_segment_score": suspicious_segment_score,
         "approximate_feature_window_start": window_start,
         "approximate_feature_window_end": window_end,
+        "top_k": int(args.top_k),
+        "top_suspicious_segments": top_suspicious_segments,
         "original_feature_lengths": original_lengths,
         "temporal_length_used_for_window": temporal_length,
         "plot_path": str(plot_path),
@@ -277,6 +308,7 @@ def main():
         print(f"Suspicious segment index: {suspicious_segment_index}")
         print(f"Suspicious segment score: {suspicious_segment_score:.6f}")
         print(f"Approximate feature index window: {window_start}-{window_end}")
+        print(f"Top suspicious segments: {top_suspicious_segments}")
     else:
         print("No suspicious segment was localized.")
         print("Approximate feature index window: None")

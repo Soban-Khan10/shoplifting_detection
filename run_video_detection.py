@@ -10,31 +10,39 @@ import cv2
 
 
 DEFAULT_THRESHOLD = 0.052090
+DEFAULT_I3D_WEIGHTS = Path("weights/i3d/rgb_imagenet.pt")
+DEFAULT_OUTPUT_DIR = "outputs/video_detection_i3d"
 N_MODEL_SEGMENTS = 32
 TIMESTAMP_MAPPING_NOTE = (
     "Approximate timestamp mapped from the Stage 2 32-segment model index to the "
-    "S3D clip timeline using clip_len, stride, FPS, and total frame metadata. "
+    "I3D clip timeline using clip_len, stride, FPS, and total frame metadata. "
     "This is a review window, not an exact frame-level event boundary."
 )
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Run raw video S3D feature extraction followed by two-stage anomaly inference."
+        description="Run raw video I3D feature extraction followed by two-stage anomaly inference."
     )
     parser.add_argument("--video", required=True, help="Path to the input .mp4 video.")
-    parser.add_argument("--output-dir", default="outputs/video_detection", help="Directory for generated outputs.")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Directory for generated outputs.")
+    parser.add_argument(
+        "--weights",
+        default=str(DEFAULT_I3D_WEIGHTS),
+        help="Path to RGB I3D Kinetics pretrained weights.",
+    )
     parser.add_argument(
         "--device",
         default="cpu",
         choices=["cpu", "mps", "auto"],
-        help="Device for both stages. Default is CPU because S3D MPS max_pool3d is unsupported in this environment.",
+        help="Device for both stages. Default is CPU for raw-video extraction reliability.",
     )
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, help="Stage 1 inference threshold.")
-    parser.add_argument("--clip-len", type=int, default=32, help="S3D clip length in frames.")
-    parser.add_argument("--stride", type=int, default=16, help="S3D clip stride in frames.")
-    parser.add_argument("--resize", type=int, default=256, help="S3D resize size before center crop.")
-    parser.add_argument("--crop-size", type=int, default=224, help="S3D center crop size.")
+    parser.add_argument("--top-k", type=int, default=5, help="Number of top Stage 2 suspicious segments to report.")
+    parser.add_argument("--clip-len", type=int, default=64, help="I3D clip length in frames.")
+    parser.add_argument("--stride", type=int, default=32, help="I3D clip stride in frames.")
+    parser.add_argument("--resize", type=int, default=256, help="I3D resize size before center crop.")
+    parser.add_argument("--crop-size", type=int, default=224, help="I3D center crop size.")
     return parser.parse_args()
 
 
@@ -76,10 +84,10 @@ def run_stage(command):
 def require_positive_number(metadata, key):
     value = metadata.get(key)
     if value is None:
-        raise ValueError(f"S3D metadata is missing required field: {key}")
+        raise ValueError(f"Feature metadata is missing required field: {key}")
     value = float(value)
     if value <= 0:
-        raise ValueError(f"S3D metadata field {key} must be positive, got {value}")
+        raise ValueError(f"Feature metadata field {key} must be positive, got {value}")
     return value
 
 
@@ -190,6 +198,25 @@ def add_null_suspicious_outputs(result):
     result.setdefault("suspicious_clip_path", None)
     result.setdefault("suspicious_key_frame_path", None)
     result.setdefault("timestamp_mapping_note", None)
+    result.setdefault("top_suspicious_time_windows", [])
+
+
+def map_top_segments_to_time_windows(top_segments, metadata):
+    windows = []
+    for segment in top_segments or []:
+        segment_idx = int(segment["segment_index"])
+        window = map_segment_to_video_window(segment_idx, metadata)
+        windows.append(
+            {
+                "rank": int(segment["rank"]),
+                "segment_index": segment_idx,
+                "score": float(segment["score"]),
+                "start_time_sec": round(float(window["start_sec"]), 3),
+                "end_time_sec": round(float(window["end_sec"]), 3),
+                "overlaps_gt_if_debug_available": None,
+            }
+        )
+    return windows
 
 
 def extract_suspicious_outputs(video_path, output_dir, feature_path):
@@ -199,7 +226,7 @@ def extract_suspicious_outputs(video_path, output_dir, feature_path):
     if not json_path.exists():
         raise FileNotFoundError(f"Expected inference JSON was not found: {json_path}")
     if not metadata_path.exists():
-        raise FileNotFoundError(f"Expected S3D metadata JSON was not found: {metadata_path}")
+        raise FileNotFoundError(f"Expected feature metadata JSON was not found: {metadata_path}")
 
     result = read_json(json_path)
     if not result.get("alert", False):
@@ -218,6 +245,10 @@ def extract_suspicious_outputs(video_path, output_dir, feature_path):
     if not source_video_path.exists():
         source_video_path = video_path
 
+    result["top_suspicious_time_windows"] = map_top_segments_to_time_windows(
+        result.get("top_suspicious_segments"),
+        metadata,
+    )
     window = map_segment_to_video_window(segment_idx, metadata)
     output_stem = safe_output_stem(video_path)
     clip_path = output_dir / f"{output_stem}_suspicious_clip.mp4"
@@ -256,28 +287,34 @@ def extract_suspicious_outputs(video_path, output_dir, feature_path):
 def main():
     args = parse_args()
     video_path = Path(args.video).expanduser()
+    weights_path = Path(args.weights).expanduser()
     if not video_path.exists():
         print(f"Error: video path does not exist: {video_path}", file=sys.stderr)
+        return 1
+    if not weights_path.exists():
+        print(f"Error: I3D weights path does not exist: {weights_path}", file=sys.stderr)
         return 1
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    feature_path = output_dir / f"{safe_stem(video_path)}_s3d_features.npy"
+    feature_path = output_dir / f"{safe_stem(video_path)}_i3d_features.npy"
 
     print(
-        "Warning: S3D features are shape-compatible with the existing (T, 1024) pipeline, "
-        "but may not exactly match the original UCF I3D features used to train the anomaly models."
+        "Using RGB Inception-I3D features for the raw-video pipeline. "
+        "Feature scores depend on matching the training-time I3D preprocessing and weights."
     )
     print()
 
-    print("Stage 1: Extracting S3D features")
+    print("Stage 1: Extracting I3D features")
     extract_command = [
         "python",
-        "extract_s3d_features_from_video.py",
+        "extract_i3d_features_from_video_real.py",
         "--video",
         str(video_path),
         "--output",
         str(feature_path),
+        "--weights",
+        str(weights_path),
         "--device",
         args.device,
         "--clip-len",
@@ -291,7 +328,7 @@ def main():
     ]
     status = run_stage(extract_command)
     if status != 0:
-        print(f"Error: S3D feature extraction failed with exit code {status}.", file=sys.stderr)
+        print(f"Error: I3D feature extraction failed with exit code {status}.", file=sys.stderr)
         return status
 
     print()
@@ -307,6 +344,8 @@ def main():
         args.device,
         "--threshold",
         f"{args.threshold:.6f}",
+        "--top-k",
+        str(args.top_k),
     ]
     status = run_stage(inference_command)
     if status != 0:
